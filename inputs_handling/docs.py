@@ -1,40 +1,122 @@
+import os
+import numpy as np
+
+from sklearn.feature_extraction.text import CountVectorizer
+
+
+# -------------------------
+# 1. Dataset
+# -------------------------
+
+data_dir = "../dataset/documents"
+
+
+# -------------------------
+# 2. Read Documents
+# -------------------------
+
+documents = []
+y = []
+
+
+for filename in os.listdir(data_dir):
+
+    path = os.path.join(
+        data_dir,
+        filename
+    )
+
+
+    # -------------------------
+    # Read Document
+    # -------------------------
+
+    with open(
+        path,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        document = file.read()
+
+
+    # -------------------------
+    # Store Document
+    # -------------------------
+
+    if "cat" in filename.lower():
+
+        documents.append(document)
+        y.append(0)
+
+    elif "dog" in filename.lower():
+
+        documents.append(document)
+        y.append(1)
+
+
+# -------------------------
+# 3. Convert Labels to NumPy
+# -------------------------
+
+y = np.array(y).reshape(-1, 1)
+
+
+# -------------------------
+# 4. Bag of Words
+# -------------------------
+
+vectorizer = CountVectorizer()
+
+X = vectorizer.fit_transform(
+    documents
+)
+
+
+# -------------------------
+# 5. Convert to NumPy
+# -------------------------
+
+X = X.toarray()
+
+
+# -------------------------
+# 6. Normalize
+# -------------------------
+
+X = X / np.max(
+    X,
+    axis=1,
+    keepdims=True
+)
+
+
+# -------------------------
+# 7. Dataset Information
+# -------------------------
+
+print("X Shape:")
+print(X.shape)
+
+print("\ny Shape:")
+print(y.shape)
+
+print("\nVocabulary:")
+print(vectorizer.get_feature_names_out())
+
+print("\nX:")
+print(X)
+
+print("\ny:")
+print(y)
+
+
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
 from sklearn.utils import gen_batches
-
-# -------------------------
-# 1. Dataset
-# -------------------------
-
-X = np.array(
-    [
-        [1.0, 1.0],
-        [1.0, 2.0],
-        [2.0, 1.0],
-        [2.0, 2.0],
-        [3.0, 3.0],
-        [4.0, 3.0],
-        [3.0, 4.0],
-        [4.0, 4.0],
-    ]
-)
-
-y = np.array(
-    [
-        [0.0],
-        [0.0],
-        [0.0],
-        [0.0],
-        [1.0],
-        [1.0],
-        [1.0],
-        [1.0],
-    ]
-)
-
 
 # -------------------------
 # 2. Train-Test Split
@@ -54,13 +136,11 @@ def sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
 
-# def binary_cross_entropy(y, y_pred):
-#     return -np.mean(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-
 def binary_cross_entropy(y, y_pred):
     eps = 1e-12
     y_pred = np.clip(y_pred, eps, 1 - eps)
     return -np.mean(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
+
 
 # -------------------------
 # 4. Parameters
@@ -71,7 +151,6 @@ N = X_train.shape[0]
 n_features = X_train.shape[1]
 n_outputs = y_train.shape[1]
 
-# W = np.random.randn(n_features, n_outputs)
 W = np.random.randn(n_features, n_outputs) / np.sqrt(n_features)
 
 b = np.zeros((1, n_outputs))

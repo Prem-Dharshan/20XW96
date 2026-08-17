@@ -1,3 +1,107 @@
+import os
+import cv2 as cv
+import numpy as np
+
+
+# -------------------------
+# 1. Dataset
+# -------------------------
+
+data_dir = "../dataset/images"
+
+image_size = (64, 64)
+
+
+# -------------------------
+# 2. Read Images
+# -------------------------
+
+X = []
+y = []
+
+
+for filename in os.listdir(data_dir):
+
+    path = os.path.join(
+        data_dir,
+        filename
+    )
+
+    # Read image as grayscale
+    image = cv.imread(
+        path,
+        0
+    )
+
+    # Skip files that are not images
+    if image is None:
+        continue
+
+
+    # -------------------------
+    # Resize
+    # -------------------------
+
+    image = cv.resize(
+        image,
+        image_size
+    )
+
+
+    # -------------------------
+    # Convert Image to Vector
+    # -------------------------
+
+    image = image.flatten()
+
+
+    # -------------------------
+    # Get Label and Store Sample
+    # -------------------------
+
+    if "cat" in filename.lower():
+
+        X.append(image)
+        y.append(0)
+
+    elif "dog" in filename.lower():
+
+        X.append(image)
+        y.append(1)
+
+
+# -------------------------
+# 3. Convert to NumPy
+# -------------------------
+
+X = np.array(X)
+
+y = np.array(y).reshape(-1, 1)
+
+
+# -------------------------
+# 4. Normalize
+# -------------------------
+
+X = X / 255.0
+
+
+# -------------------------
+# 5. Dataset Information
+# -------------------------
+
+print("X Shape:")
+print(X.shape)
+
+print("\ny Shape:")
+print(y.shape)
+
+print("\nX:")
+print(X)
+
+print("\ny:")
+print(y)
+
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
@@ -9,31 +113,31 @@ from sklearn.utils import gen_batches
 # 1. Dataset
 # -------------------------
 
-X = np.array(
-    [
-        [1.0, 1.0],
-        [1.0, 2.0],
-        [2.0, 1.0],
-        [2.0, 2.0],
-        [3.0, 3.0],
-        [4.0, 3.0],
-        [3.0, 4.0],
-        [4.0, 4.0],
-    ]
-)
+# X = np.array(
+#     [
+#         [1.0, 1.0],
+#         [1.0, 2.0],
+#         [2.0, 1.0],
+#         [2.0, 2.0],
+#         [3.0, 3.0],
+#         [4.0, 3.0],
+#         [3.0, 4.0],
+#         [4.0, 4.0],
+#     ]
+# )
 
-y = np.array(
-    [
-        [0.0],
-        [0.0],
-        [0.0],
-        [0.0],
-        [1.0],
-        [1.0],
-        [1.0],
-        [1.0],
-    ]
-)
+# y = np.array(
+#     [
+#         [0.0],
+#         [0.0],
+#         [0.0],
+#         [0.0],
+#         [1.0],
+#         [1.0],
+#         [1.0],
+#         [1.0],
+#     ]
+# )
 
 
 # -------------------------
@@ -54,13 +158,11 @@ def sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
 
-# def binary_cross_entropy(y, y_pred):
-#     return -np.mean(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
-
 def binary_cross_entropy(y, y_pred):
     eps = 1e-12
     y_pred = np.clip(y_pred, eps, 1 - eps)
     return -np.mean(y * np.log(y_pred) + (1 - y) * np.log(1 - y_pred))
+
 
 # -------------------------
 # 4. Parameters
@@ -71,7 +173,6 @@ N = X_train.shape[0]
 n_features = X_train.shape[1]
 n_outputs = y_train.shape[1]
 
-# W = np.random.randn(n_features, n_outputs)
 W = np.random.randn(n_features, n_outputs) / np.sqrt(n_features)
 
 b = np.zeros((1, n_outputs))
