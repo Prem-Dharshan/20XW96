@@ -1,60 +1,105 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import mean_squared_error, r2_score
 
 
-def predict(X, w, b):
-    return X @ w + b
+# -------------------------
+# 1. Dataset
+# -------------------------
+
+X = np.array(
+    [
+        [1.0],
+        [2.0],
+        [3.0],
+        [4.0],
+        [5.0],
+        [6.0],
+    ]
+)
+
+y = np.array(
+    [
+        [3.0],
+        [5.0],
+        [7.0],
+        [9.0],
+        [11.0],
+        [13.0],
+    ]
+)
 
 
-def scores(y_true, y_pred):
-    mse = mean_squared_error(y_true, y_pred)
-    return {
-        "MSE": mse,
-        "SSE": mse * len(y_true),  # SSE is just MSE without the /N
-        "R2": r2_score(y_true, y_pred),
-    }
+# -------------------------
+# 2. Loss Functions
+# -------------------------
+
+def sse(y, y_pred):
+    return np.sum((y - y_pred) ** 2)
 
 
-def train(X, y_true, w, b, lr=0.01, epochs=100):
-    N = len(X)
-    history = {"MSE": [], "SSE": [], "R2": []}
-
-    for i in range(epochs):
-        y_pred = predict(X, w, b)
-        error = y_pred - y_true
-
-        for k, v in scores(y_true, y_pred).items():
-            history[k].append(v)
-
-        w -= lr * (2 / N) * (X.T @ error)
-        b -= lr * (2 / N) * error.sum()
-
-        if i % 20 == 0:
-            print(
-                f"epoch {i:3d}  MSE {history['MSE'][-1]:.6f}  R2 {history['R2'][-1]:.4f}"
-            )
-
-    return w, b, history
+def mse(y, y_pred):
+    return np.mean((y - y_pred) ** 2)
 
 
-def plot(history):
-    fig, ax = plt.subplots(1, len(history), figsize=(5 * len(history), 4))
-    for a, (name, vals) in zip(ax, history.items()):
-        a.plot(vals)
-        a.set_title(name)
-        a.set_xlabel("epoch")
-        a.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+# -------------------------
+# 3. Parameters
+# -------------------------
+
+N = X.shape[0]
+
+W = np.random.randn(X.shape[1], y.shape[1])
+b = np.zeros((1, y.shape[1]))
+
+lr = 0.01
 
 
-X = np.array([[1.0, 2, 4], [2, 3, 5], [3, 4, 6]])
-y = np.array([2.5, 3.5, 4.5])
+# -------------------------
+# 4. Training
+# -------------------------
 
-w, b, history = train(X, y, np.zeros(X.shape[1]), 0.0)
+for epoch in range(1000):
 
-print("\nw", w, " b", round(b, 4))
-print("pred", predict(X, w, b))
-print(scores(y, predict(X, w, b)))
-plot(history)
+    # Forward
+    y_pred = X @ W + b
+
+    # Loss
+    loss = mse(y, y_pred)
+
+    # Backward
+    dZ = 2 * (y_pred - y) / N
+
+    dW = X.T @ dZ
+    db = np.sum(dZ, axis=0, keepdims=True)
+
+    # Update
+    W -= lr * dW
+    b -= lr * db
+
+
+# -------------------------
+# 5. Prediction
+# -------------------------
+
+predictions = X @ W + b
+
+
+# -------------------------
+# 6. Results
+# -------------------------
+
+print("Weights:")
+print(W)
+
+print("\nBias:")
+print(b)
+
+print("\nPredictions:")
+print(predictions)
+
+print("\nActual:")
+print(y)
+
+print("\nSSE:")
+print(sse(y, predictions))
+
+print("\nMSE:")
+print(mse(y, predictions))
