@@ -1,6 +1,5 @@
 import torch
 
-
 # -------------------------
 # 1. Input
 # -------------------------
@@ -12,26 +11,15 @@ x = torch.tensor([1.0, 2.0, 3.0])
 # 2. Parameters
 # -------------------------
 
-W1 = torch.tensor([
-    [1.0, 2.0, 1.0],
-    [2.0, 1.0, 1.0],
-    [1.0, 1.0, 2.0]
-], requires_grad=True)
-
-b1 = torch.tensor(
-    [1.0, 0.0, -1.0],
-    requires_grad=True
+W1 = torch.tensor(
+    [[1.0, 2.0, 1.0], [2.0, 1.0, 1.0], [1.0, 1.0, 2.0]], requires_grad=True
 )
 
-W2 = torch.tensor(
-    [[1.0, 2.0, 1.0]],
-    requires_grad=True
-)
+b1 = torch.tensor([1.0, 0.0, -1.0], requires_grad=True)
 
-b2 = torch.tensor(
-    [1.0],
-    requires_grad=True
-)
+W2 = torch.tensor([[1.0, 2.0, 1.0]], requires_grad=True)
+
+b2 = torch.tensor([1.0], requires_grad=True)
 
 
 # -------------------------

@@ -18,9 +18,7 @@ import numpy as np
 # X: rows = samples, cols = features.  ALWAYS this way round.
 #    Shape (N, n_features) = (3, 3) here. Coincidence that both are 3.
 #    Don't let that confuse you later.
-inputs = np.array([[1, 2, 4],
-                   [2, 3, 5],
-                   [3, 4, 6]])
+inputs = np.array([[1, 2, 4], [2, 3, 5], [3, 4, 6]])
 
 # One weight PER FEATURE -> shape (n_features,) = (3,)
 # NOTE the float. If you write np.array([1,1,1]) you get an int array,
@@ -71,6 +69,7 @@ def predict(X, w, b):
 #   (b) PUNISHES BIG ERRORS HARDER. err 10 costs 100x what err 1 costs.
 #       => model is pushed to fix outliers first. This is the exam answer.
 
+
 def sse_loss(y_true, y_pred):
     """Sum of Squared Errors. Grows as you add data -> can't compare
     across datasets of different size."""
@@ -104,7 +103,7 @@ def r_squared(y_true, y_pred):
     Regression only. Never for classification.
     """
     ss_res = sse_loss(y_true, y_pred)
-    ss_tot = sse_loss(y_true, np.mean(y_true))   # mean broadcasts to (N,)
+    ss_tot = sse_loss(y_true, np.mean(y_true))  # mean broadcasts to (N,)
     return 1 - (ss_res / ss_tot)
 
 
@@ -126,7 +125,7 @@ def gradients(X, y_true, y_pred):
     Flip it and both gradients flip sign, and your update walks UPHILL.
     """
     N = len(y_true)
-    error = y_pred - y_true                  # (N,)
+    error = y_pred - y_true  # (N,)
 
     # Why X.T and not X?
     #   You want ONE gradient PER FEATURE, not per sample.
@@ -137,12 +136,12 @@ def gradients(X, y_true, y_pred):
     #   big x1 -> feature 1 had a big say in the prediction -> big correction
     #   small x1 -> it barely mattered -> barely moves
     #   This is BLAME ASSIGNMENT BY FEATURE.
-    grad_w = (2 / N) * (X.T @ error)         # (f,)
+    grad_w = (2 / N) * (X.T @ error)  # (f,)
 
     # Bias touches EVERY sample equally (its "x" is always 1),
     # so every sample's error gets a vote -> just sum them.
     # Must be a scalar, because b is a scalar.
-    grad_b = (2 / N) * np.sum(error)         # scalar
+    grad_b = (2 / N) * np.sum(error)  # scalar
 
     return grad_w, grad_b
 
@@ -180,7 +179,7 @@ def train(X, y_true, w, b, lr=0.01, epochs=100, convergence_tol=1e-6):
         # TODO 3: gw, gb = gradients(...)
         # TODO 4: update w and b   (remember the minus)
         # TODO 5: every 10 epochs, print epoch + loss
-        
+
         y_pred = predict(X, w, b)  # 1: forward pass
 
         loss = mse_loss(y_true, y_pred)  # 2: record loss

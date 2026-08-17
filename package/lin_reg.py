@@ -1,5 +1,5 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score
 
 
@@ -9,9 +9,11 @@ def predict(X, w, b):
 
 def scores(y_true, y_pred):
     mse = mean_squared_error(y_true, y_pred)
-    return {"MSE": mse,
-            "SSE": mse * len(y_true),    # SSE is just MSE without the /N
-            "R2": r2_score(y_true, y_pred)}
+    return {
+        "MSE": mse,
+        "SSE": mse * len(y_true),  # SSE is just MSE without the /N
+        "R2": r2_score(y_true, y_pred),
+    }
 
 
 def train(X, y_true, w, b, lr=0.01, epochs=100):
@@ -29,7 +31,9 @@ def train(X, y_true, w, b, lr=0.01, epochs=100):
         b -= lr * (2 / N) * error.sum()
 
         if i % 20 == 0:
-            print(f"epoch {i:3d}  MSE {history['MSE'][-1]:.6f}  R2 {history['R2'][-1]:.4f}")
+            print(
+                f"epoch {i:3d}  MSE {history['MSE'][-1]:.6f}  R2 {history['R2'][-1]:.4f}"
+            )
 
     return w, b, history
 
@@ -45,7 +49,7 @@ def plot(history):
     plt.show()
 
 
-X = np.array([[1., 2, 4], [2, 3, 5], [3, 4, 6]])
+X = np.array([[1.0, 2, 4], [2, 3, 5], [3, 4, 6]])
 y = np.array([2.5, 3.5, 4.5])
 
 w, b, history = train(X, y, np.zeros(X.shape[1]), 0.0)

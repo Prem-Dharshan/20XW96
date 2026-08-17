@@ -4,23 +4,9 @@ import torch
 # 1. Dataset
 # -------------------------
 
-X = torch.tensor([
-    [1.0],
-    [2.0],
-    [3.0],
-    [4.0],
-    [5.0],
-    [6.0]
-])
+X = torch.tensor([[1.0], [2.0], [3.0], [4.0], [5.0], [6.0]])
 
-y = torch.tensor([
-    [3.0],
-    [5.0],
-    [7.0],
-    [9.0],
-    [11.0],
-    [13.0]
-])
+y = torch.tensor([[3.0], [5.0], [7.0], [9.0], [11.0], [13.0]])
 
 
 # -------------------------
@@ -41,10 +27,7 @@ loss_fn = torch.nn.MSELoss()
 # 4. SGD optimizer
 # -------------------------
 
-optimizer = torch.optim.SGD(
-    model.parameters(),
-    lr=0.01
-)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
 
 # -------------------------

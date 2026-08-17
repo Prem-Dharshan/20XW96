@@ -1,5 +1,5 @@
-from matplotlib import pyplot as plt
 import numpy as np
+from matplotlib import pyplot as plt
 
 
 def mse(y_pred, y_true):
@@ -46,10 +46,15 @@ def training(X, y_true, w, b, lr=0.01, epochs=100, convergence_tol=1e-6):
         b -= lr * grad_b
 
         if i % 10 == 0:
-            print(f"Epoch {i}: MSE = {history['MSE'][-1]:.6f}  R2 = {history['R2'][-1]:.4f}")
+            print(
+                f"Epoch {i}: MSE = {history['MSE'][-1]:.6f}  R2 = {history['R2'][-1]:.4f}"
+            )
 
         # CHANGED: index into the MSE list, not the old flat history
-        if len(history["MSE"]) > 1 and abs(history["MSE"][-1] - history["MSE"][-2]) < convergence_tol:
+        if (
+            len(history["MSE"]) > 1
+            and abs(history["MSE"][-1] - history["MSE"][-2]) < convergence_tol
+        ):
             print(f"Converged at epoch {i}.")
             break
 
@@ -72,17 +77,15 @@ def plot_metrics(history, log=False):
         a.set_title(name)
         a.set_xlabel("Epoch")
         a.grid(alpha=0.3)
-        if log and min(vals) > 0:            # CHANGED: log arg actually used
-            a.set_yscale("log")              # guard: log of <=0 is invalid (R2 goes negative)
+        if log and min(vals) > 0:  # CHANGED: log arg actually used
+            a.set_yscale("log")  # guard: log of <=0 is invalid (R2 goes negative)
 
     plt.tight_layout()
     plt.show()
 
 
 def main():
-    X = np.array([[1, 2, 4],
-                  [2, 3, 5],
-                  [3, 4, 6]])
+    X = np.array([[1, 2, 4], [2, 3, 5], [3, 4, 6]])
 
     y_true = np.array([2.5, 3.5, 4.5])
     w = np.array([1.0, 1.0, 1.0])

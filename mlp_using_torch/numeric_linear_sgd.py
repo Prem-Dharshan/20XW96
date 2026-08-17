@@ -1,27 +1,13 @@
 import torch
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
 # -------------------------
 # 1. Dataset
 # -------------------------
 
-X = torch.tensor([
-    [1.0],
-    [2.0],
-    [3.0],
-    [4.0],
-    [5.0],
-    [6.0]
-])
+X = torch.tensor([[1.0], [2.0], [3.0], [4.0], [5.0], [6.0]])
 
-y = torch.tensor([
-    [3.0],
-    [5.0],
-    [7.0],
-    [9.0],
-    [11.0],
-    [13.0]
-])
+y = torch.tensor([[3.0], [5.0], [7.0], [9.0], [11.0], [13.0]])
 
 
 # -------------------------
@@ -35,11 +21,7 @@ dataset = TensorDataset(X, y)
 # 3. Create batches
 # -------------------------
 
-loader = DataLoader(
-    dataset,
-    batch_size=2,
-    shuffle=True
-)
+loader = DataLoader(dataset, batch_size=2, shuffle=True)
 
 
 # -------------------------
@@ -60,10 +42,7 @@ loss_fn = torch.nn.MSELoss()
 # 6. SGD optimizer
 # -------------------------
 
-optimizer = torch.optim.SGD(
-    model.parameters(),
-    lr=0.01
-)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
 
 # -------------------------

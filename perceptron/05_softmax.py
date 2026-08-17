@@ -1,33 +1,35 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.datasets import make_blobs
-from sklearn.metrics import (log_loss, accuracy_score, precision_score,
-                             recall_score, f1_score, roc_auc_score,
-                             confusion_matrix, ConfusionMatrixDisplay)
+from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score,
+                             confusion_matrix, f1_score, log_loss,
+                             precision_score, recall_score, roc_auc_score)
 
 
 def softmax(z):
-    z = z - z.max(axis=1, keepdims=True)      # stops exp() overflow. cancels out.
+    z = z - z.max(axis=1, keepdims=True)  # stops exp() overflow. cancels out.
     e = np.exp(z)
-    return e / e.sum(axis=1, keepdims=True)   # axis=1 -> each ROW sums to 1
+    return e / e.sum(axis=1, keepdims=True)  # axis=1 -> each ROW sums to 1
 
 
 def predict(X, W, b):
-    return softmax(X @ W + b)                 # (N,f)@(f,C) + (C,) -> (N,C)
+    return softmax(X @ W + b)  # (N,f)@(f,C) + (C,) -> (N,C)
 
 
 def one_hot(y, C):
-    return np.eye(C)[y]                       # (N,) -> (N,C)
+    return np.eye(C)[y]  # (N,) -> (N,C)
 
 
 def scores(y, P):
-    lab = P.argmax(axis=1)                    # was: P >= 0.5
-    return {"CCE":  log_loss(y, P),
-            "Acc":  accuracy_score(y, lab),
-            "Prec": precision_score(y, lab, average="macro", zero_division=0),
-            "Rec":  recall_score(y, lab, average="macro", zero_division=0),
-            "F1":   f1_score(y, lab, average="macro", zero_division=0),
-            "AUC":  roc_auc_score(y, P, multi_class="ovr")}
+    lab = P.argmax(axis=1)  # was: P >= 0.5
+    return {
+        "CCE": log_loss(y, P),
+        "Acc": accuracy_score(y, lab),
+        "Prec": precision_score(y, lab, average="macro", zero_division=0),
+        "Rec": recall_score(y, lab, average="macro", zero_division=0),
+        "F1": f1_score(y, lab, average="macro", zero_division=0),
+        "AUC": roc_auc_score(y, P, multi_class="ovr"),
+    }
 
 
 def train(X, y, W, b, lr=0.5, epochs=300):
@@ -36,16 +38,16 @@ def train(X, y, W, b, lr=0.5, epochs=300):
     for _ in range(epochs):
         P = predict(X, W, b)
         hist.append(scores(y, P))
-        E = P - Y                             # (N,C)
-        W -= lr / len(X) * (X.T @ E)          # (f,N)@(N,C) -> (f,C)
-        b -= lr / len(X) * E.sum(axis=0)      # collapse samples, keep classes
+        E = P - Y  # (N,C)
+        W -= lr / len(X) * (X.T @ E)  # (f,N)@(N,C) -> (f,C)
+        b -= lr / len(X) * E.sum(axis=0)  # collapse samples, keep classes
     return W, b, hist
 
 
 def plot(hist, y, lab):
     fig, ax = plt.subplots(1, 2, figsize=(11, 4))
 
-    for k in hist[0]:                                  # one line per metric
+    for k in hist[0]:  # one line per metric
         ax[0].plot([h[k] for h in hist], label=k)
     ax[0].legend()
     ax[0].set_title("training")
