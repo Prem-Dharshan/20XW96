@@ -3,7 +3,6 @@ import numpy as np
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
-from sklearn.utils import gen_batches
 
 # -------------------------
 # 1. Dataset
@@ -50,6 +49,10 @@ X_train, X_test, y_train, y_test = train_test_split(
 # -------------------------
 
 
+def relu(z):
+    return np.maximum(0, z)
+
+
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
@@ -65,19 +68,20 @@ def binary_cross_entropy(y, y_pred):
 N = X_train.shape[0]
 
 n_features = X_train.shape[1]
+n_hidden = 10
 n_outputs = y_train.shape[1]
 
-W = np.random.randn(n_features, n_outputs)
+W1 = np.random.randn(n_features, n_hidden)
 
-b = np.zeros((1, n_outputs))
+b1 = np.zeros((1, n_hidden))
+
+W2 = np.random.randn(n_hidden, n_outputs)
+
+b2 = np.zeros((1, n_outputs))
 
 lr = 0.1
 
 epochs = 1000
-
-batch_size = N
-# batch_size = 1  → SGD
-# batch_size = N  → Batch Gradient Descent
 
 
 # -------------------------
@@ -89,71 +93,73 @@ losses = []
 for epoch in range(epochs):
 
     # -------------------------
-    # Shuffle
+    # Forward Pass
     # -------------------------
 
-    indices = np.random.permutation(N)
+    Z1 = X_train @ W1 + b1
 
-    X_train = X_train[indices]
-    y_train = y_train[indices]
+    A1 = relu(Z1)
+
+    Z2 = A1 @ W2 + b2
+
+    y_pred = sigmoid(Z2)
 
     # -------------------------
-    # Batches
+    # Loss
     # -------------------------
 
-    for batch in gen_batches(N, batch_size):
+    loss = binary_cross_entropy(y_train, y_pred)
 
-        X_batch = X_train[batch]
-        y_batch = y_train[batch]
+    # -------------------------
+    # Backward Pass
+    # -------------------------
 
-        n_batch = len(X_batch)
+    N = X_train.shape[0]
 
-        # -------------------------
-        # Forward Pass
-        # -------------------------
+    dZ2 = (y_pred - y_train) / N
 
-        Z = X_batch @ W + b
+    dW2 = A1.T @ dZ2
 
-        y_pred = sigmoid(Z)
+    db2 = np.sum(dZ2, axis=0, keepdims=True)
 
-        # -------------------------
-        # Loss
-        # -------------------------
+    dA1 = dZ2 @ W2.T
 
-        loss = binary_cross_entropy(y_batch, y_pred)
+    dZ1 = dA1 * (Z1 > 0)
 
-        # -------------------------
-        # Backward Pass
-        # -------------------------
+    dW1 = X_train.T @ dZ1
 
-        dZ = (y_pred - y_batch) / n_batch
+    db1 = np.sum(dZ1, axis=0, keepdims=True)
 
-        dW = X_batch.T @ dZ
+    # -------------------------
+    # Weight Update
+    # -------------------------
 
-        db = np.sum(dZ, axis=0, keepdims=True)
+    W2 -= lr * dW2
 
-        # -------------------------
-        # Weight Update
-        # -------------------------
+    b2 -= lr * db2
 
-        W -= lr * dW
+    W1 -= lr * dW1
 
-        b -= lr * db
+    b1 -= lr * db1
 
     # -------------------------
     # Epoch Loss
     # -------------------------
 
-    y_epoch_pred = sigmoid(X_train @ W + b)
-
-    losses.append(binary_cross_entropy(y_train, y_epoch_pred))
+    losses.append(loss)
 
 
 # -------------------------
 # 6. Prediction
 # -------------------------
 
-probabilities = sigmoid(X_test @ W + b)
+Z1 = X_test @ W1 + b1
+
+A1 = relu(Z1)
+
+Z2 = A1 @ W2 + b2
+
+probabilities = sigmoid(Z2)
 
 predictions = (probabilities >= 0.5).astype(int)
 
@@ -177,11 +183,17 @@ auc = roc_auc_score(y_test, probabilities)
 # 8. Results
 # -------------------------
 
-print("Weights:")
-print(W)
+print("W1:")
+print(W1)
 
-print("\nBias:")
-print(b)
+print("\nb1:")
+print(b1)
+
+print("\nW2:")
+print(W2)
+
+print("\nb2:")
+print(b2)
 
 print("\nProbabilities:")
 print(probabilities)
