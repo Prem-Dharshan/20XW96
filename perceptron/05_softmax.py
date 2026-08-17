@@ -1,16 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.datasets import make_blobs
-from sklearn.metrics import (
-    ConfusionMatrixDisplay,
-    accuracy_score,
-    confusion_matrix,
-    f1_score,
-    log_loss,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score,
+                             confusion_matrix, f1_score, log_loss,
+                             precision_score, recall_score, roc_auc_score)
 
 
 def softmax(z):
