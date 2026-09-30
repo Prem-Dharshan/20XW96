@@ -6,81 +6,105 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-# Load dataset
-df = pd.read_csv("datasets/deep_learning_lab_test_dataset.csv")
 
-# Remove missing values
-df = df.dropna()
+# Variables
+DATASET_PATH = "datasets/deep_learning_lab_test_dataset.csv"
+TARGET = "target"
 
-# Remove target and encode categorical features
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
+
+ENCODER_UNITS = [8, 4]
+DECODER_UNITS = [8]
+
+ACTIVATION = "relu"
+# Alternatives: sigmoid, tanh, linear, elu, selu, gelu
+
+OPTIMIZER = "adam"
+# Alternatives: sgd, rmsprop, adamax, nadam
+
+LOSS = "mse"
+# Alternatives: mae, binary_crossentropy, categorical_crossentropy
+
+EPOCHS = 50
+BATCH_SIZE = 16
+VALIDATION_SPLIT = 0.2
+
+
+# Load
+df = pd.read_csv(DATASET_PATH).dropna()
+
 X = pd.get_dummies(
-    df.drop(columns="target"),
+    df.drop(columns=TARGET),
     dtype=float
 )
 
-# Standardize features
 X = StandardScaler().fit_transform(X)
 
-# Split into training and testing data
+
+# Split
 X_train, X_test = train_test_split(
-    X, test_size=0.2, random_state=42
+    X,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE
 )
 
-# Build autoencoder
+INPUT_SIZE = X_train.shape[1]
+
+
+# Autoencoder
 autoencoder = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(X_train.shape[1],)),  # Input
-    tf.keras.layers.Dense(8, activation="relu"),       # Encoder
-    tf.keras.layers.Dense(4, activation="relu"),       # Bottleneck
-    tf.keras.layers.Dense(8, activation="relu"),       # Decoder
-    tf.keras.layers.Dense(X_train.shape[1])            # Reconstruction
+    tf.keras.layers.Input(shape=(INPUT_SIZE,)),
+
+    tf.keras.layers.Dense(ENCODER_UNITS[0], activation=ACTIVATION),
+    tf.keras.layers.Dense(ENCODER_UNITS[1], activation=ACTIVATION),
+
+    tf.keras.layers.Dense(DECODER_UNITS[0], activation=ACTIVATION),
+
+    # Output: linear activation by default
+    tf.keras.layers.Dense(INPUT_SIZE)
 ])
 
-# Compile model
+
 autoencoder.compile(
-    optimizer="adam",
-    loss="mse"
+    optimizer=OPTIMIZER,
+    loss=LOSS
 )
 
-# Train autoencoder
+
 autoencoder.fit(
     X_train,
     X_train,
-    epochs=50,
-    batch_size=16,
-    validation_split=0.2,
-    verbose=1
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE,
+    validation_split=VALIDATION_SPLIT
 )
 
-# Extract encoder
+
+# Encoder
 encoder = tf.keras.Sequential(
-    autoencoder.layers[:3]
+    autoencoder.layers[:len(ENCODER_UNITS) + 1]
 )
 
-# Reconstruct test data
-reconstructed = autoencoder.predict(
-    X_test, verbose=0
-)
 
-# Encode test data
-encoded = encoder.predict(
-    X_test, verbose=0
-)
+# Reconstruction
+reconstructed = autoencoder.predict(X_test, verbose=0)
 
-# Calculate reconstruction error for each sample
+# Encoding
+encoded = encoder.predict(X_test, verbose=0)
+
+# Reconstruction error
 reconstruction_error = np.mean(
     (X_test - reconstructed) ** 2,
     axis=1
 )
 
-print("Autoencoder completed.")
+
 print("Test shape:", X_test.shape)
 print("Encoded shape:", encoded.shape)
-print(
-    "Mean reconstruction error:",
-    reconstruction_error.mean()
-)
+print("Mean error:", reconstruction_error.mean())
 
-# Plot reconstruction error
+
 plt.plot(reconstruction_error, "o-")
 plt.xlabel("Test Sample")
 plt.ylabel("Reconstruction Error")
