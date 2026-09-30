@@ -1,118 +1,140 @@
 import numpy as np
-import tensorflow as tf
-import matplotlib.pyplot as plt
+import re
 
-from sklearn.datasets import load_digits
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
 
 # Variables
-NUM_IMAGES = 500
-TEST_SIZE = 0.2
-RANDOM_STATE = 42
-
-FILTERS = [8, 16]
-KERNEL_SIZE = 3
-POOL_SIZE = 2
-DENSE_UNITS = 32
-
-ACTIVATION = "relu"
-# Alternatives: sigmoid, tanh, linear, elu, selu, gelu
-
-OUTPUT_ACTIVATION = "softmax"
-# Alternatives: sigmoid (binary classification), linear (regression)
-
-OPTIMIZER = "adam"
-# Alternatives: sgd, rmsprop, adamax, nadam
-
-LOSS = "sparse_categorical_crossentropy"
-# Alternatives: categorical_crossentropy, binary_crossentropy
-
-EPOCHS = 10
-BATCH_SIZE = 32
-VALIDATION_SPLIT = 0.1
+EMBEDDING_SIZE = 20
+WINDOW_SIZE = 2
+EPOCHS = 2000
+LEARNING_RATE = 0.05
 
 
-# Load dataset
-data = load_digits()
+# 1. PREPROCESS
+text = """
+king queen king queen
+king is a man
+queen is a woman
+king rules kingdom
+queen rules kingdom
+king and queen rule kingdom
+man is human
+woman is human
+king is powerful
+queen is powerful
+king is royal
+queen is royal
+"""
 
-images = data.images / data.images.max()
-images = images[..., np.newaxis]
-labels = data.target
+words = re.sub(r"[^a-z ]", "", text.lower()).split()
 
-images = images[:NUM_IMAGES]
-labels = labels[:NUM_IMAGES]
+vocab = sorted(set(words))
+w2i = {word: i for i, word in enumerate(vocab)}
+i2w = {i: word for word, i in w2i.items()}
 
-
-# Split data
-train_images, test_images, train_labels, test_labels = train_test_split(
-    images, labels,
-    test_size=TEST_SIZE,
-    random_state=RANDOM_STATE
-)
-
-
-# CNN
-IMAGE_SHAPE = train_images.shape[1:]
-
-cnn = Sequential([
-    tf.keras.Input(shape=IMAGE_SHAPE),
-
-    Conv2D(FILTERS[0], KERNEL_SIZE, padding="same", activation=ACTIVATION),
-    MaxPooling2D(POOL_SIZE),
-
-    Conv2D(FILTERS[1], KERNEL_SIZE, padding="same", activation=ACTIVATION),
-    MaxPooling2D(POOL_SIZE),
-
-    Flatten(),
-    Dense(DENSE_UNITS, activation=ACTIVATION),
-    Dense(10, activation=OUTPUT_ACTIVATION)
-])
+V = len(vocab)
+D = EMBEDDING_SIZE
 
 
-# Compile
-cnn.compile(
-    optimizer=OPTIMIZER,
-    loss=LOSS,
-    metrics=["accuracy"]
-)
+# 2. CREATE TRAINING PAIRS
+
+cbow = []
+skipgram = []
+
+for i in range(WINDOW_SIZE, len(words) - WINDOW_SIZE):
+    context = [
+        w2i[word]
+        for word in words[i-WINDOW_SIZE:i] +
+                   words[i+1:i+WINDOW_SIZE+1]
+    ]
+    target = w2i[words[i]]
+    cbow.append((context, target))
 
 
-# Train
-history = cnn.fit(
-    train_images,
-    train_labels,
-    epochs=EPOCHS,
-    batch_size=BATCH_SIZE,
-    validation_split=VALIDATION_SPLIT
-)
+for i, word in enumerate(words):
+    for j in range(
+        max(0, i-WINDOW_SIZE),
+        min(len(words), i+WINDOW_SIZE+1)
+    ):
+        if i != j:
+            skipgram.append(
+                (w2i[word], w2i[words[j]])
+            )
 
 
-# Evaluate
-loss, accuracy = cnn.evaluate(test_images, test_labels, verbose=0)
-
-predictions = cnn.predict(test_images, verbose=0)
-predicted_labels = np.argmax(predictions, axis=1)
-
-
-print("CNN completed.")
-print("Test Loss:", loss)
-print("Test Accuracy:", accuracy)
-
-print("\nClassification Report:")
-print(classification_report(test_labels, predicted_labels))
+# 3. SOFTMAX
+def softmax(x):
+    exp_x = np.exp(x - np.max(x))
+    return exp_x / exp_x.sum()
 
 
-# Plot error
-plt.plot(history.history["loss"], label="Training Error")
-plt.plot(history.history["val_loss"], label="Validation Error")
+# 4. TRAIN CBOW
 
-plt.xlabel("Epoch")
-plt.ylabel("Error")
-plt.title("CNN Error")
-plt.legend()
-plt.grid()
-plt.show()
+W1 = np.random.randn(V, D) * 0.01
+W2 = np.random.randn(D, V) * 0.01
+
+for epoch in range(EPOCHS):
+    for context, target in cbow:
+
+        h = W1[context].mean(axis=0)
+        p = softmax(h @ W2)
+
+        grad = p.copy()
+        grad[target] -= 1
+
+        dW2 = np.outer(h, grad)
+        dh = W2 @ grad
+
+        W1[context] -= LEARNING_RATE * dh / len(context)
+        W2 -= LEARNING_RATE * dW2
+
+cbow_vec = W1
+
+
+# 5. TRAIN SKIP-GRAM
+
+W1 = np.random.randn(V, D) * 0.01
+W2 = np.random.randn(D, V) * 0.01
+
+for epoch in range(EPOCHS):
+    for target, context in skipgram:
+
+        h = W1[target]
+        p = softmax(h @ W2)
+
+        grad = p.copy()
+        grad[context] -= 1
+
+        dW2 = np.outer(h, grad)
+        dh = W2 @ grad
+
+        W1[target] -= LEARNING_RATE * dh
+        W2 -= LEARNING_RATE * dW2
+
+skipgram_vec = W1
+
+
+# 6. SIMILARITY
+
+word_a = w2i["king"]
+word_b = w2i["queen"]
+
+cbow_a = cbow_vec[word_a].reshape(1, -1)
+cbow_b = cbow_vec[word_b].reshape(1, -1)
+
+skip_a = skipgram_vec[word_a].reshape(1, -1)
+skip_b = skipgram_vec[word_b].reshape(1, -1)
+
+
+print("CBOW Cosine Similarity:",
+      cosine_similarity(cbow_a, cbow_b)[0, 0])
+
+print("CBOW Euclidean Distance:",
+      euclidean_distances(cbow_a, cbow_b)[0, 0])
+
+print("Skip-gram Cosine Similarity:",
+      cosine_similarity(skip_a, skip_b)[0, 0])
+
+print("Skip-gram Euclidean Distance:",
+      euclidean_distances(skip_a, skip_b)[0, 0])
