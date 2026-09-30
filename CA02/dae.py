@@ -6,70 +6,122 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+
+# Variables
+DATASET_PATH = "datasets/deep_learning_lab_test_dataset.csv"
+TARGET = "target"
+
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
+
+NOISE_LEVEL = 0.2
+
+ENCODER_UNITS = [8, 4]
+DECODER_UNITS = [8]
+
+ACTIVATION = "relu"
+# Alternatives: sigmoid, tanh, linear, elu, selu, gelu
+
+OPTIMIZER = "adam"
+# Alternatives: sgd, rmsprop, adamax, nadam
+
+LOSS = "mse"
+# Alternatives: mae, binary_crossentropy, categorical_crossentropy
+
+EPOCHS = 50
+BATCH_SIZE = 16
+VALIDATION_SPLIT = 0.2
+
+
 # Load data
-df = pd.read_csv("datasets/deep_learning_lab_test_dataset.csv")
-df = df.dropna()
+df = pd.read_csv(DATASET_PATH).dropna()
 
 # Prepare data
 X = pd.get_dummies(
-    df.drop(columns="target"),
+    df.drop(columns=TARGET),
     dtype=float
 )
 
 X = StandardScaler().fit_transform(X)
 
+
 # Split
 X_train, X_test = train_test_split(
-    X, test_size=0.2, random_state=42
+    X,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE
 )
 
+
 # Add noise
-X_train_noisy = X_train + 0.2 * np.random.normal(
+X_train_noisy = X_train + NOISE_LEVEL * np.random.normal(
     size=X_train.shape
 )
 
-X_test_noisy = X_test + 0.2 * np.random.normal(
+X_test_noisy = X_test + NOISE_LEVEL * np.random.normal(
     size=X_test.shape
 )
 
+
 # Autoencoder
+INPUT_SIZE = X_train.shape[1]
+
 autoencoder = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(X_train.shape[1],)),
-    tf.keras.layers.Dense(8, activation="relu"),
-    tf.keras.layers.Dense(4, activation="relu"),
-    tf.keras.layers.Dense(8, activation="relu"),
-    tf.keras.layers.Dense(X_train.shape[1])
+    tf.keras.layers.Input(shape=(INPUT_SIZE,)),
+
+    tf.keras.layers.Dense(
+        ENCODER_UNITS[0],
+        activation=ACTIVATION
+    ),
+
+    tf.keras.layers.Dense(
+        ENCODER_UNITS[1],
+        activation=ACTIVATION
+    ),
+
+    tf.keras.layers.Dense(
+        DECODER_UNITS[0],
+        activation=ACTIVATION
+    ),
+
+    tf.keras.layers.Dense(INPUT_SIZE)
 ])
+
 
 # Compile
 autoencoder.compile(
-    optimizer="adam",
-    loss="mse"
+    optimizer=OPTIMIZER,
+    loss=LOSS
 )
 
-# Train: noisy input → clean output
+
+# Noisy input -> clean output
 autoencoder.fit(
     X_train_noisy,
     X_train,
-    epochs=50,
-    batch_size=16,
-    validation_split=0.2,
-    verbose=1
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE,
+    validation_split=VALIDATION_SPLIT
 )
 
-# Extract encoder
+
+# Encoder
 encoder = tf.keras.Sequential(
-    autoencoder.layers[:3]
+    autoencoder.layers[:len(ENCODER_UNITS) + 1]
 )
 
-# Test
+
+# Denoise
 denoised = autoencoder.predict(
-    X_test_noisy, verbose=0
+    X_test_noisy,
+    verbose=0
 )
 
 encoded = encoder.predict(
-    X_test_noisy, verbose=0
+    X_test_noisy,
+    verbose=0
 )
+
 
 # Reconstruction error
 error = np.mean(
@@ -77,10 +129,12 @@ error = np.mean(
     axis=1
 )
 
+
 print("Denoising Autoencoder completed.")
 print("Test shape:", X_test.shape)
 print("Encoded shape:", encoded.shape)
-print("Mean reconstruction error:", error.mean())
+print("Mean error:", error.mean())
+
 
 # Plot
 plt.plot(error, "o-")
