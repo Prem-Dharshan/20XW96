@@ -1,5 +1,16 @@
 import numpy as np
-import re
+from nltk.tokenize import word_tokenize
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from scipy.special import softmax
+from numpy.lib.stride_tricks import sliding_window_view
+
+
+# Variables
+EMBEDDING_SIZE = 20
+WINDOW_SIZE = 2
+EPOCHS = 2000
+LEARNING_RATE = 0.05
+
 
 # 1. PREPROCESS
 text = """
@@ -17,82 +28,102 @@ king is royal
 queen is royal
 """
 
-words = re.sub(r'[^a-z ]', '', text.lower()).split()
+words = word_tokenize(text.lower())
+words = [word for word in words if word.isalpha()]
+
 vocab = sorted(set(words))
-w2i = {w:i for i,w in enumerate(vocab)}
-i2w = {i:w for w,i in w2i.items()}
-V, D = len(vocab), 20
+w2i = {word: i for i, word in enumerate(vocab)}
+
+V = len(vocab)
+D = EMBEDDING_SIZE
 
 
 # 2. CREATE TRAINING PAIRS
-window = 2
-cbow, skipgram = [], []
+windows = sliding_window_view(
+    np.array(words),
+    2 * WINDOW_SIZE + 1
+)
 
-for i in range(window, len(words)-window):
-    ctx = [w2i[w] for w in words[i-window:i] + words[i+1:i+window+1]]
-    tgt = w2i[words[i]]
-    cbow.append((ctx, tgt))
+# CBOW: context -> target
+cbow = [
+    (
+        [w2i[w] for j, w in enumerate(window) if j != WINDOW_SIZE],
+        w2i[window[WINDOW_SIZE]]
+    )
+    for window in windows
+]
 
-for i, w in enumerate(words):
-    for j in range(max(0,i-window), min(len(words),i+window+1)):
-        if i != j:
-            skipgram.append((w2i[w], w2i[words[j]]))
-
-
-# 3. SOFTMAX
-def softmax(x):
-    e = np.exp(x - max(x))
-    return e / e.sum()
-
-
-# 4. TRAIN CBOW
-W1 = np.random.randn(V,D) * .01
-W2 = np.random.randn(D,V) * .01
-
-for epoch in range(2000):
-    for ctx, tgt in cbow:
-
-        h = W1[ctx].mean(0)
-        p = softmax(h @ W2)
-
-        grad = p.copy()
-        grad[tgt] -= 1
-
-        dW2 = np.outer(h, grad)
-        dh = W2 @ grad
-
-        W1[ctx] -= .05 * dh / len(ctx)
-        W2 -= .05 * dW2
-
-cbow_vec = W1
+# Skip-gram: target -> context
+skipgram = [
+    (
+        w2i[window[WINDOW_SIZE]],
+        w2i[w]
+    )
+    for window in windows
+    for j, w in enumerate(window)
+    if j != WINDOW_SIZE
+]
 
 
-# 5. TRAIN SKIP-GRAM
-W1 = np.random.randn(V,D) * .01
-W2 = np.random.randn(D,V) * .01
+# 3. TRAIN
+def train_word2vec(training_pairs, is_cbow):
+    input_weights = np.random.randn(V, D) * 0.01
+    output_weights = np.random.randn(D, V) * 0.01
 
-for epoch in range(2000):
-    for tgt, ctx in skipgram:
+    for epoch in range(EPOCHS):
+        for input_data, target_index in training_pairs:
 
-        h = W1[tgt]
-        p = softmax(h @ W2)
+            if is_cbow:
+                hidden = input_weights[input_data].mean(axis=0)
+            else:
+                hidden = input_weights[input_data]
 
-        grad = p.copy()
-        grad[ctx] -= 1
+            probabilities = softmax(hidden @ output_weights)
 
-        dW2 = np.outer(h, grad)
-        dh = W2 @ grad
+            gradient = probabilities.copy()
+            gradient[target_index] -= 1
 
-        W1[tgt] -= .05 * dh
-        W2 -= .05 * dW2
+            output_gradient = np.outer(hidden, gradient)
+            hidden_gradient = output_weights @ gradient
 
-skip_vec = W1
+            if is_cbow:
+                input_weights[input_data] -= (
+                    LEARNING_RATE * hidden_gradient / len(input_data)
+                )
+            else:
+                input_weights[input_data] -= (
+                    LEARNING_RATE * hidden_gradient
+                )
+
+            output_weights -= LEARNING_RATE * output_gradient
+
+    return input_weights
 
 
-# 6. SIMILARITY
-def sim(a,b,vec):
-    x,y = vec[w2i[a]], vec[w2i[b]]
-    return x @ y / (np.linalg.norm(x)*np.linalg.norm(y))
+# 4. TRAIN CBOW AND SKIP-GRAM
+cbow_vectors = train_word2vec(cbow, True)
+skipgram_vectors = train_word2vec(skipgram, False)
 
-print("CBOW:", sim("king","queen",cbow_vec))
-print("Skipgram:", sim("king","queen",skip_vec))
+
+# 5. SIMILARITY
+word_a = w2i["king"]
+word_b = w2i["queen"]
+
+cbow_a = cbow_vectors[word_a].reshape(1, -1)
+cbow_b = cbow_vectors[word_b].reshape(1, -1)
+
+skip_a = skipgram_vectors[word_a].reshape(1, -1)
+skip_b = skipgram_vectors[word_b].reshape(1, -1)
+
+
+print("CBOW Cosine Similarity:",
+      cosine_similarity(cbow_a, cbow_b)[0, 0])
+
+print("CBOW Euclidean Distance:",
+      euclidean_distances(cbow_a, cbow_b)[0, 0])
+
+print("Skip-gram Cosine Similarity:",
+      cosine_similarity(skip_a, skip_b)[0, 0])
+
+print("Skip-gram Euclidean Distance:",
+      euclidean_distances(skip_a, skip_b)[0, 0])
