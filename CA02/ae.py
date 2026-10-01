@@ -68,11 +68,18 @@ autoencoder = tf.keras.Sequential([
 
 autoencoder.compile(
     optimizer=OPTIMIZER,
-    loss=LOSS
+    loss=LOSS,
+    metrics=[
+        "mse",
+        "mae",
+        "mape",
+        "msle",
+        "cosine_similarity"
+    ]
 )
 
 
-autoencoder.fit(
+history = autoencoder.fit(
     X_train,
     X_train,
     epochs=EPOCHS,
@@ -80,6 +87,7 @@ autoencoder.fit(
     validation_split=VALIDATION_SPLIT
 )
 
+# print(history.history.keys())
 
 # Encoder
 encoder = tf.keras.Sequential(
@@ -109,5 +117,13 @@ plt.plot(reconstruction_error, "o-")
 plt.xlabel("Test Sample")
 plt.ylabel("Reconstruction Error")
 plt.title("Autoencoder Reconstruction Error")
+plt.grid()
+plt.show()
+
+plt.plot(history.history["loss"], label="Training Loss")
+plt.plot(history.history["val_loss"], label="Validation Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.legend()
 plt.grid()
 plt.show()

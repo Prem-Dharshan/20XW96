@@ -49,8 +49,9 @@ X = pd.get_dummies(
 
 X = StandardScaler().fit_transform(X)
 
-# Encode target if categorical
-y = pd.factorize(y)[0]
+from sklearn.preprocessing import LabelEncoder
+
+y = LabelEncoder().fit_transform(y)
 
 
 # Split
