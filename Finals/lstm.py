@@ -1,320 +1,149 @@
-from pathlib import Path
-
-from _runtime import setup
-
-args = setup(__file__)
 
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import nltk
 
 from sklearn.model_selection import train_test_split
+from numpy.lib.stride_tricks import sliding_window_view
 
 
 # Variables
-DATA_URL = (
-    "https://storage.googleapis.com/download.tensorflow.org/data/"
-    "shakespeare.txt"
-)
-
+DATASET_PATH = "datasets/alice.txt"
 SEQ_LEN = 100
 STRIDE = 3
-MAX_SAMPLES = 128 if args.quick else 50000
-
 EMBEDDING_DIM = 32
-LSTM_UNITS = 128
-
-TEST_SIZE = 0.2
-RANDOM_STATE = 42
-
-ACTIVATION = "tanh"
-RECURRENT_ACTIVATION = "sigmoid"
-OUTPUT_ACTIVATION = "softmax"
-
-OPTIMIZER = "adam"
-LOSS = "sparse_categorical_crossentropy"
-
-EPOCHS = 1 if args.quick else 10
+RNN_UNITS = 128
+EPOCHS = 30
 BATCH_SIZE = 128
-VALIDATION_SPLIT = 0.1
-
-TEMPERATURE = 0.8
-GENERATE_LENGTH = 10 if args.quick else 300
-
-
-# Reproducibility
-tf.keras.utils.set_random_seed(RANDOM_STATE)
 
 
 # Load dataset
-path = tf.keras.utils.get_file(
-    "shakespeare.txt",
-    DATA_URL
-)
-
-with open(path, "r", encoding="utf-8") as file:
+with open(DATASET_PATH, encoding="utf-8") as file:
     text = file.read()
 
-print("Total characters:", len(text))
-print("\nSample text:")
-print(text[:300])
+print("Characters:", len(text))
 
 
 # Create character vocabulary
-vocab = sorted(set(text))
+vocab = sorted(nltk.FreqDist(text))
 VOCAB_SIZE = len(vocab)
 
-char_to_index = {
-    char: index
-    for index, char in enumerate(vocab)
-}
-
+char_to_index = {c: i for i, c in enumerate(vocab)}
 index_to_char = np.array(vocab)
-
-print("\nVocabulary size:", VOCAB_SIZE)
-
-
-# Encode text
-text_ids = np.array(
-    [char_to_index[char] for char in text],
-    dtype=np.int32
-)
+text_ids = np.array([char_to_index[c] for c in text])
 
 
-# Split text before creating sequences
-split_index = int(len(text_ids) * (1 - TEST_SIZE))
-
-train_text = text_ids[:split_index]
-test_text = text_ids[split_index:]
+# Split dataset
+split = int(len(text_ids) * 0.8)
+train_text, test_text = text_ids[:split], text_ids[split:]
 
 
-# Create input and target sequences
-def create_sequences(data, seq_len, stride, max_samples=None):
-    X, y = [], []
-
-    for i in range(0, len(data) - seq_len, stride):
-        X.append(data[i:i + seq_len])
-        y.append(data[i + 1:i + seq_len + 1])
-
-        if max_samples is not None and len(X) >= max_samples:
-            break
-
-    return np.array(X), np.array(y)
+# Create sequences
+def create_sequences(data):
+    sequences = sliding_window_view(data, SEQ_LEN + 1)[::STRIDE]
+    return sequences[:, :-1].copy(), sequences[:, 1:].copy()
 
 
-X_train, y_train = create_sequences(
-    train_text,
-    SEQ_LEN,
-    STRIDE,
-    MAX_SAMPLES
-)
+X_train, y_train = create_sequences(train_text)
+X_test, y_test = create_sequences(test_text)
 
-X_test, y_test = create_sequences(
-    test_text,
-    SEQ_LEN,
-    STRIDE,
-    MAX_SAMPLES // 5
-)
+# X_train, y_train = X_train[:20000], y_train[:20000]
+# X_test, y_test = X_test[:10000], y_test[:10000]
 
-print("\nTraining input shape:", X_train.shape)
-print("Training target shape:", y_train.shape)
-print("Testing input shape:", X_test.shape)
-print("Testing target shape:", y_test.shape)
-
-
-# Inspect a sample sequence
-print("\nInput sequence:")
-print("".join(index_to_char[X_train[0]]))
-
-print("\nTarget sequence:")
-print("".join(index_to_char[y_train[0]]))
-
-
-# Split training and validation sets
 X_train, X_val, y_train, y_val = train_test_split(
-    X_train,
-    y_train,
-    test_size=VALIDATION_SPLIT,
-    random_state=RANDOM_STATE,
-    shuffle=True
+    X_train, y_train, test_size=0.1, random_state=42
 )
 
+print("Train:", X_train.shape)
+print("Validation:", X_val.shape)
+print("Test:", X_test.shape)
 
-# Many-to-many LSTM
-lstm = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(None,)),
 
-    tf.keras.layers.Embedding(
-        input_dim=VOCAB_SIZE,
-        output_dim=EMBEDDING_DIM
-    ),
-
-    tf.keras.layers.LSTM(
-        units=LSTM_UNITS,
-        activation=ACTIVATION,
-        recurrent_activation=RECURRENT_ACTIVATION,
-        return_sequences=True
-    ),
-
-    tf.keras.layers.Dense(
-        units=VOCAB_SIZE,
-        activation=OUTPUT_ACTIVATION
-    )
+# Build RNN
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(SEQ_LEN,)),
+    tf.keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM),
+    tf.keras.layers.LSTM(RNN_UNITS, return_sequences=True),
+    tf.keras.layers.Dense(VOCAB_SIZE, activation="softmax")
 ])
 
-
-# Display model architecture
-lstm.summary()
-
-
-# Compile model
-lstm.compile(
-    optimizer=OPTIMIZER,
-    loss=LOSS,
+model.compile(
+    optimizer="adam",
+    loss="sparse_categorical_crossentropy",
     metrics=["accuracy"]
 )
 
+model.summary()
 
-# Train model
-history = lstm.fit(
-    X_train,
-    y_train,
-    epochs=EPOCHS,
-    batch_size=BATCH_SIZE,
+
+# Train
+history = model.fit(
+    X_train, y_train,
     validation_data=(X_val, y_val),
-    shuffle=True
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE
 )
 
 
-# Evaluate model
-test_loss, test_accuracy = lstm.evaluate(
-    X_test,
-    y_test,
-    verbose=0
-)
-
-print("\nTest Loss:", test_loss)
-print("Test Character Accuracy:", test_accuracy)
+# Evaluate
+loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
+print("Test Loss:", loss)
+print("Test Accuracy:", accuracy)
 
 
-# Predict test sequences
-predictions = lstm.predict(
-    X_test[:1],
-    verbose=0
-)
+# Plot results
+plt.figure(figsize=(10, 4))
 
-predicted_ids = np.argmax(
-    predictions[0],
-    axis=-1
-)
-
-print("\nInput sequence:")
-print("".join(index_to_char[X_test[0]]))
-
-print("\nActual next-character sequence:")
-print("".join(index_to_char[y_test[0]]))
-
-print("\nPredicted next-character sequence:")
-print("".join(index_to_char[predicted_ids]))
-
-
-# Plot accuracy
-plt.plot(
-    history.history["accuracy"],
-    label="Training Accuracy"
-)
-
-plt.plot(
-    history.history["val_accuracy"],
-    label="Validation Accuracy"
-)
-
-plt.xlabel("Epoch")
-plt.ylabel("Accuracy")
-plt.title("LSTM Accuracy")
+plt.subplot(1, 2, 1)
+plt.plot(history.history["loss"], label="Train")
+plt.plot(history.history["val_loss"], label="Validation")
+plt.title("Loss")
 plt.legend()
 plt.grid()
-plt.show()
-plt.figure()
 
-
-# Plot loss
-plt.plot(
-    history.history["loss"],
-    label="Training Loss"
-)
-
-plt.plot(
-    history.history["val_loss"],
-    label="Validation Loss"
-)
-
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.title("LSTM Loss")
+plt.subplot(1, 2, 2)
+plt.plot(history.history["accuracy"], label="Train")
+plt.plot(history.history["val_accuracy"], label="Validation")
+plt.title("Accuracy")
 plt.legend()
 plt.grid()
+
+plt.tight_layout()
 plt.show()
-plt.figure()
+
+
+# Predict next character at every timestep
+prediction = model.predict(X_test[:1], verbose=0)[0].argmax(axis=-1)
+
+print("Input:    ", "".join(index_to_char[X_test[0]]))
+print("Actual:   ", "".join(index_to_char[y_test[0]]))
+print("Predicted:", "".join(index_to_char[prediction]))
 
 
 # Generate text
-def generate_text(seed_text, length=GENERATE_LENGTH, temperature=TEMPERATURE):
-    if not seed_text:
-        raise ValueError("Seed text cannot be empty.")
-
+def generate_text(seed, length=300, temperature=0.7):
     if temperature <= 0:
         raise ValueError("Temperature must be greater than zero.")
 
-    unknown_chars = [
-        char for char in seed_text
-        if char not in char_to_index
-    ]
-
-    if unknown_chars:
-        raise ValueError(
-            f"Characters not in vocabulary: {unknown_chars}"
-        )
-
-    generated = seed_text
+    generated = seed
 
     for _ in range(length):
         context = generated[-SEQ_LEN:]
+        X = np.array([[char_to_index[c] for c in context]])
 
-        input_ids = np.array([
-            [char_to_index[char] for char in context]
-        ], dtype=np.int32)
-
-        probabilities = lstm.predict(
-            input_ids,
-            verbose=0
-        )[0, -1]
-
-        logits = np.log(
-            np.maximum(probabilities, 1e-8)
-        ) / temperature
-
-        logits -= np.max(logits)
-
-        probabilities = np.exp(logits)
+        probabilities = model.predict(X, verbose=0)[0, -1]
+        probabilities = np.log(np.maximum(probabilities, 1e-8))
+        probabilities /= temperature
+        probabilities = np.exp(probabilities - np.max(probabilities))
         probabilities /= probabilities.sum()
 
-        next_id = np.random.choice(
-            VOCAB_SIZE,
-            p=probabilities
-        )
-
+        next_id = np.random.choice(VOCAB_SIZE, p=probabilities)
         generated += index_to_char[next_id]
 
     return generated
 
 
-# Generate sample text
-print("\nGenerated Text:")
-print(
-    generate_text(
-        seed_text="ROMEO: ",
-        length=GENERATE_LENGTH,
-        temperature=TEMPERATURE
-    )
-)
+print("Given Text", text[:SEQ_LEN])
+print("Generated")
+print(generate_text(text[:SEQ_LEN], length=300, temperature=0.7))
