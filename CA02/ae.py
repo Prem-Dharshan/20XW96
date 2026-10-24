@@ -48,7 +48,7 @@ X_train, X_test = train_test_split(
     test_size=TEST_SIZE,
     random_state=RANDOM_STATE
 )
-
+1
 INPUT_SIZE = X_train.shape[1]
 
 
