@@ -1,8 +1,3 @@
-from pathlib import Path
-
-from _runtime import setup
-
-args = setup(__file__)
 
 import numpy as np
 import pandas as pd
@@ -13,13 +8,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
-    roc_curve, roc_auc_score, classification_report,
-    ConfusionMatrixDisplay
+    roc_curve, roc_auc_score, ConfusionMatrixDisplay
 )
 
 
 # Variables
-DATASET_PATH = Path(__file__).resolve().parents[1] / "datasets" / "spam.csv"
+
+DATASET_PATH = "datasets/spam.csv"
 TEXT_COLUMN = "text"
 TARGET_COLUMN = "label"
 
@@ -28,24 +23,22 @@ MAX_LENGTHS = [50, 100, 200]
 HIDDEN_UNITS = [32, 64, 128]
 EMBEDDING_DIM = 64
 
-TEST_SIZE = 0.2
-VALIDATION_SIZE = 0.2
+TRAIN_SPLIT = 0.8
+VAL_SPLIT = 0.2
 RANDOM_STATE = 42
 
 ACTIVATION = "tanh"
 OUTPUT_ACTIVATION = "sigmoid"
 OPTIMIZER = "adam"
 LOSS = "binary_crossentropy"
+METRICS = ["accuracy"]
 
-EPOCHS = 1 if args.quick else 10
+EPOCHS = 10
 BATCH_SIZE = 32
 
 
-# Reproducibility
-tf.keras.utils.set_random_seed(RANDOM_STATE)
+# Load dataset
 
-
-# Load data
 df = pd.read_csv(DATASET_PATH, encoding="latin-1").rename(
     columns={"v1": TARGET_COLUMN, "v2": TEXT_COLUMN}
 )
@@ -54,21 +47,12 @@ df = df[[TEXT_COLUMN, TARGET_COLUMN]].dropna()
 df[TEXT_COLUMN] = df[TEXT_COLUMN].astype(str).str.strip()
 df = df[df[TEXT_COLUMN] != ""]
 
-print("Dataset shape:", df.shape)
-print(df.head())
-
-
-# Encode labels
+X = df[TEXT_COLUMN].to_numpy()
 labels = df[TARGET_COLUMN].astype(str).str.strip().str.lower()
 
 label_mapping = {
-    "ham": 0,
-    "not spam": 0,
-    "legitimate": 0,
-    "normal": 0,
-    "0": 0,
-    "spam": 1,
-    "1": 1
+    "ham": 0, "not spam": 0, "legitimate": 0, "normal": 0, "0": 0,
+    "spam": 1, "1": 1
 }
 
 if set(labels.unique()).issubset(label_mapping):
@@ -77,136 +61,108 @@ else:
     encoder = LabelEncoder()
     y = encoder.fit_transform(labels)
 
-    if len(encoder.classes_) != 2:
-        raise ValueError("Spam classification requires exactly two classes.")
-
-    print("Label mapping:", dict(enumerate(encoder.classes_)))
-
-X = df[TEXT_COLUMN].to_numpy()
-
-if args.quick:
-    X, _, y, _ = train_test_split(
-        X, y, train_size=256, stratify=y, random_state=RANDOM_STATE
-    )
-
+print("Dataset shape:", df.shape)
 print("Class distribution:", np.bincount(y))
 
 
-# Split into train and test sets
-X_train_raw, X_test_raw, y_train, y_test = train_test_split(
+# Split dataset
+
+X_train, X_test, y_train, y_test = train_test_split(
     X, y,
-    test_size=TEST_SIZE,
+    test_size=1 - TRAIN_SPLIT,
     random_state=RANDOM_STATE,
     stratify=y
 )
 
-
-# Split training data into training and validation sets
-X_train_raw, X_val_raw, y_train, y_val = train_test_split(
-    X_train_raw, y_train,
-    test_size=VALIDATION_SIZE,
+X_train, X_val, y_train, y_val = train_test_split(
+    X_train, y_train,
+    test_size=VAL_SPLIT,
     random_state=RANDOM_STATE,
     stratify=y_train
 )
 
 
-# Tokenize using training data only
+# Tokenize text
+
 tokenizer = tf.keras.preprocessing.text.Tokenizer(
     num_words=MAX_WORDS,
     oov_token="<OOV>"
 )
 
-tokenizer.fit_on_texts(X_train_raw)
+tokenizer.fit_on_texts(X_train)
 
-train_sequences = tokenizer.texts_to_sequences(X_train_raw)
-val_sequences = tokenizer.texts_to_sequences(X_val_raw)
-test_sequences = tokenizer.texts_to_sequences(X_test_raw)
+X_train = tokenizer.texts_to_sequences(X_train)
+X_val = tokenizer.texts_to_sequences(X_val)
+X_test = tokenizer.texts_to_sequences(X_test)
 
-VOCAB_SIZE = min(
-    MAX_WORDS,
-    len(tokenizer.word_index) + 1
-)
+VOCAB_SIZE = min(MAX_WORDS, len(tokenizer.word_index) + 1)
 
 print("Vocabulary size:", VOCAB_SIZE)
 
 
-# Store experiment results
+# Train and compare LSTM models
+
 results = []
 best_auc = -1
 best_model = None
 best_length = None
 best_units = None
 
-
-# Train models for different sequence lengths and hidden units
 for MAX_LEN in MAX_LENGTHS:
-    X_train = tf.keras.utils.pad_sequences(
-        train_sequences, maxlen=MAX_LEN,
-        padding="post", truncating="post"
-    )
 
-    X_val = tf.keras.utils.pad_sequences(
-        val_sequences, maxlen=MAX_LEN,
-        padding="post", truncating="post"
+    X_train_pad = tf.keras.utils.pad_sequences(
+        X_train, maxlen=MAX_LEN, padding="post", truncating="post"
     )
-
-    X_test = tf.keras.utils.pad_sequences(
-        test_sequences, maxlen=MAX_LEN,
-        padding="post", truncating="post"
+    X_val_pad = tf.keras.utils.pad_sequences(
+        X_val, maxlen=MAX_LEN, padding="post", truncating="post"
+    )
+    X_test_pad = tf.keras.utils.pad_sequences(
+        X_test, maxlen=MAX_LEN, padding="post", truncating="post"
     )
 
     for LSTM_UNITS in HIDDEN_UNITS:
+
         tf.keras.backend.clear_session()
 
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=(MAX_LEN,)),
-
             tf.keras.layers.Embedding(
-                input_dim=VOCAB_SIZE,
-                output_dim=EMBEDDING_DIM,
-                mask_zero=True
+                VOCAB_SIZE, EMBEDDING_DIM, mask_zero=True
             ),
-
             tf.keras.layers.LSTM(
-                units=LSTM_UNITS,
-                activation=ACTIVATION
+                LSTM_UNITS, activation=ACTIVATION
             ),
-
             tf.keras.layers.Dense(
-                1,
-                activation=OUTPUT_ACTIVATION
+                1, activation=OUTPUT_ACTIVATION
             )
         ])
 
         model.compile(
             optimizer=OPTIMIZER,
             loss=LOSS,
-            metrics=[
-                "accuracy",
-                tf.keras.metrics.AUC(name="auc")
-            ]
+            metrics=METRICS
         )
 
         history = model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
+            X_train_pad, y_train,
+            validation_data=(X_val_pad, y_val),
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
             verbose=0
         )
 
-        val_prob = model.predict(X_val, verbose=0).ravel()
+        val_prob = model.predict(X_val_pad, verbose=0).ravel()
         val_auc = roc_auc_score(y_val, val_prob)
 
         results.append({
             "Max Length": MAX_LEN,
             "Hidden Units": LSTM_UNITS,
-            "Best Validation Accuracy": max(history.history["val_accuracy"]),
+            "Validation Accuracy": max(history.history["val_accuracy"]),
             "Validation AUC": val_auc
         })
 
         print(
-            f"LSTM | Length={MAX_LEN} | Units={LSTM_UNITS} "
+            f"Length={MAX_LEN} | Units={LSTM_UNITS} "
             f"| Validation AUC={val_auc:.4f}"
         )
 
@@ -218,11 +174,12 @@ for MAX_LEN in MAX_LENGTHS:
             best_units = LSTM_UNITS
 
 
-# Compare configurations
+# Best configuration
+
 results_df = pd.DataFrame(results)
 
 print("\nExperiment results:")
-print(results_df.sort_values("Validation AUC", ascending=False).to_string(index=False))
+print(results_df.to_string(index=False))
 
 print("\nBest configuration:")
 print("Maximum length:", best_length)
@@ -230,17 +187,13 @@ print("Hidden units:", best_units)
 print("Validation AUC:", best_auc)
 
 
-# Prepare test input for the selected configuration
-X_test = tf.keras.utils.pad_sequences(
-    test_sequences,
-    maxlen=best_length,
-    padding="post",
-    truncating="post"
+# Evaluate model
+
+X_test_pad = tf.keras.utils.pad_sequences(
+    X_test, maxlen=best_length, padding="post", truncating="post"
 )
 
-
-# Evaluate the selected model
-y_prob = best_model.predict(X_test, verbose=0).ravel()
+y_prob = best_model.predict(X_test_pad, verbose=0).ravel()
 y_pred = (y_prob >= 0.5).astype(int)
 
 print("\nTest Accuracy:", accuracy_score(y_test, y_pred))
@@ -249,55 +202,43 @@ print("Test Recall:", recall_score(y_test, y_pred, zero_division=0))
 print("Test F1:", f1_score(y_test, y_pred, zero_division=0))
 print("Test ROC-AUC:", roc_auc_score(y_test, y_prob))
 
-print("\nClassification report:")
-print(classification_report(
-    y_test, y_pred,
-    target_names=["Legitimate", "Spam"],
-    zero_division=0
-))
 
+# Plot results
 
-# ROC curve
-fpr, tpr, thresholds = roc_curve(y_test, y_prob)
-auc_score = roc_auc_score(y_test, y_prob)
+fpr, tpr, _ = roc_curve(y_test, y_prob)
 
-plt.plot(fpr, tpr, label=f"LSTM AUC = {auc_score:.4f}")
-plt.plot([0, 1], [0, 1], "--", label="Random classifier")
+plt.figure(figsize=(12, 4))
+
+plt.subplot(1, 3, 1)
+plt.plot(fpr, tpr, label=f"AUC = {roc_auc_score(y_test, y_prob):.4f}")
+plt.plot([0, 1], [0, 1], "--")
+plt.title("ROC Curve")
 plt.xlabel("False Positive Rate")
 plt.ylabel("True Positive Rate")
-plt.title("Spam Classification ROC Curve — LSTM")
 plt.legend()
 plt.grid()
-plt.show()
-plt.figure()
 
-
-# Confusion matrix
+plt.subplot(1, 3, 2)
 ConfusionMatrixDisplay.from_predictions(
     y_test, y_pred,
-    display_labels=["Legitimate", "Spam"]
+    display_labels=["Legitimate", "Spam"],
+    ax=plt.gca()
 )
-plt.title("LSTM Confusion Matrix")
-plt.grid(False)
-plt.show()
-plt.figure()
+plt.title("Confusion Matrix")
 
-
-# Compare validation AUC across configurations
+plt.subplot(1, 3, 3)
 for units in HIDDEN_UNITS:
     subset = results_df[results_df["Hidden Units"] == units]
-
     plt.plot(
-        subset["Max Length"],
-        subset["Validation AUC"],
-        marker="o",
-        label=f"{units} units"
+        subset["Max Length"], subset["Validation AUC"],
+        marker="o", label=f"{units} units"
     )
 
+plt.title("Hyperparameter Comparison")
 plt.xlabel("Maximum Sequence Length")
-plt.ylabel("Validation ROC-AUC")
-plt.title("LSTM Hyperparameter Comparison")
+plt.ylabel("Validation AUC")
 plt.legend()
 plt.grid()
+
+plt.tight_layout()
 plt.show()
-plt.figure()

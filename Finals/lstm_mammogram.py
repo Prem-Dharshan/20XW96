@@ -1,3 +1,4 @@
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,332 +8,278 @@ from sklearn.model_selection import train_test_split
 
 
 # Variables
+
 DATASET_PATH = "datasets/mammogram.csv"
 TEXT_COLUMN = "Full_Report"
+CSV_SEPARATOR = ";"
 
 MAX_WORDS = 12000
-MAX_LENGTH = 20
-EMBEDDING_DIM = 64
-LSTM_UNITS = 128
-MAX_SAMPLES = 100000
+SEQ_LEN = 20
+STRIDE = 1
+TRAIN_LIMIT = 100000
 
-TEST_SIZE = 0.2
-VALIDATION_SIZE = 0.1
-RANDOM_STATE = 42
+EMBEDDING_DIM = 64
+RNN_UNITS = 128
+RNN_LAYERS = 1
+RECURRENT_LAYERS = ["SimpleRNN", "LSTM"]
 
 ACTIVATION = "tanh"
-RECURRENT_ACTIVATION = "sigmoid"
 OUTPUT_ACTIVATION = "softmax"
-
 OPTIMIZER = "adam"
 LOSS = "sparse_categorical_crossentropy"
+METRICS = ["accuracy"]
 
+TRAIN_SPLIT = 0.8
+VAL_SPLIT = 0.1
 EPOCHS = 10
 BATCH_SIZE = 128
+RANDOM_STATE = 42
 
-GENERATE_WORDS = 50
+PROMPT_WORDS = 5
+GENERATION_LENGTH = 50
 TEMPERATURE = 0.8
 
 
-# Reproducibility
-tf.keras.utils.set_random_seed(RANDOM_STATE)
-
-
 # Load dataset
-df = pd.read_csv(DATASET_PATH, sep=";")
 
-df = df[[TEXT_COLUMN]].dropna()
-df[TEXT_COLUMN] = df[TEXT_COLUMN].astype(str).str.strip()
-df = df[df[TEXT_COLUMN] != ""]
+df = pd.read_csv(DATASET_PATH, sep=CSV_SEPARATOR, encoding="utf-8")
 
-reports = df[TEXT_COLUMN].tolist()
+reports = df[TEXT_COLUMN].dropna().astype(str).str.strip()
+reports = reports[reports != ""].drop_duplicates().tolist()
 
-if len(reports) < 10:
-    raise ValueError("Not enough reports to train and evaluate the model.")
-
-print("Number of reports:", len(reports))
-print("\nSample report:")
-print(reports[0][:1000])
+print("Reports:", len(reports))
 
 
-# Split reports before creating word sequences
+# Split dataset
+
 train_reports, test_reports = train_test_split(
-    reports,
-    test_size=TEST_SIZE,
-    random_state=RANDOM_STATE
+    reports, test_size=1 - TRAIN_SPLIT, random_state=RANDOM_STATE
 )
 
 train_reports, val_reports = train_test_split(
-    train_reports,
-    test_size=VALIDATION_SIZE,
-    random_state=RANDOM_STATE
+    train_reports, test_size=VAL_SPLIT, random_state=RANDOM_STATE
 )
 
-print("\nTraining reports:", len(train_reports))
-print("Validation reports:", len(val_reports))
-print("Testing reports:", len(test_reports))
 
+# Tokenize text
 
-# Tokenize using training reports only
 tokenizer = tf.keras.preprocessing.text.Tokenizer(
-    num_words=MAX_WORDS,
-    oov_token="<OOV>",
-    filters=""
+    num_words=MAX_WORDS, oov_token="<OOV>"
 )
 
 tokenizer.fit_on_texts(train_reports)
 
-VOCAB_SIZE = min(
-    MAX_WORDS,
-    len(tokenizer.word_index) + 1
-)
+VOCAB_SIZE = min(MAX_WORDS, len(tokenizer.word_index) + 1)
 
-print("Vocabulary size:", VOCAB_SIZE)
+train_sequences = tokenizer.texts_to_sequences(train_reports)
+val_sequences = tokenizer.texts_to_sequences(val_reports)
+test_sequences = tokenizer.texts_to_sequences(test_reports)
 
 
-# Convert reports into next-word training examples
-def create_sequences(reports, tokenizer, max_len, max_samples=None):
+# Create many-to-many sequences
+
+def create_sequences(sequences):
     X, y = [], []
 
-    for report in reports:
-        sequence = tokenizer.texts_to_sequences([report])[0]
+    for sequence in sequences:
+        for i in range(SEQ_LEN, len(sequence), STRIDE):
+            X.append(sequence[i - SEQ_LEN:i])
+            y.append(sequence[i])
 
-        for i in range(1, len(sequence)):
-            context = sequence[max(0, i - max_len):i]
-            target = sequence[i]
-
-            X.append(context)
-            y.append(target)
-
-            if max_samples is not None and len(X) >= max_samples:
+            if len(X) >= TRAIN_LIMIT:
                 break
 
-        if max_samples is not None and len(X) >= max_samples:
+        if len(X) >= TRAIN_LIMIT:
             break
 
-    X = tf.keras.utils.pad_sequences(
-        X,
-        maxlen=max_len,
-        padding="pre",
-        truncating="pre"
+    return np.array(X, dtype=np.int32), np.array(y, dtype=np.int32)
+
+
+X_train, y_train = create_sequences(train_sequences)
+X_val, y_val = create_sequences(val_sequences)
+X_test, y_test = create_sequences(test_sequences)
+
+print("Train:", X_train.shape, y_train.shape)
+print("Validation:", X_val.shape, y_val.shape)
+print("Test:", X_test.shape, y_test.shape)
+
+
+# Train and compare models
+
+results = []
+best_loss = float("inf")
+best_model = None
+best_name = None
+
+for layer_name in RECURRENT_LAYERS:
+
+    tf.keras.backend.clear_session()
+
+    recurrent_layer = (
+        tf.keras.layers.SimpleRNN
+        if layer_name == "SimpleRNN"
+        else tf.keras.layers.LSTM
     )
 
-    return np.asarray(X, dtype=np.int32), np.asarray(y, dtype=np.int32)
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(SEQ_LEN,)),
+        tf.keras.layers.Embedding(
+            VOCAB_SIZE, EMBEDDING_DIM, mask_zero=True
+        ),
+        *[
+            recurrent_layer(RNN_UNITS, return_sequences=True, activation=ACTIVATION)
+            for _ in range(RNN_LAYERS - 1)
+        ],
+        recurrent_layer(RNN_UNITS, activation=ACTIVATION),
+        tf.keras.layers.Dense(VOCAB_SIZE, activation=OUTPUT_ACTIVATION)
+    ])
 
-
-X_train, y_train = create_sequences(
-    train_reports, tokenizer, MAX_LENGTH, MAX_SAMPLES
-)
-
-X_val, y_val = create_sequences(
-    val_reports, tokenizer, MAX_LENGTH, MAX_SAMPLES // 5
-)
-
-X_test, y_test = create_sequences(
-    test_reports, tokenizer, MAX_LENGTH, MAX_SAMPLES // 5
-)
-
-if len(X_train) == 0 or len(X_val) == 0 or len(X_test) == 0:
-    raise ValueError(
-        "No next-word sequences were created. Check report lengths and dataset."
+    model.compile(
+        optimizer=OPTIMIZER,
+        loss=LOSS,
+        metrics=METRICS
     )
 
-print("\nTraining input:", X_train.shape)
-print("Training target:", y_train.shape)
-print("Validation input:", X_val.shape)
-print("Testing input:", X_test.shape)
+    model.summary()
 
-
-# Display a sample training example
-index_to_word = {
-    index: word
-    for word, index in tokenizer.word_index.items()
-    if index < VOCAB_SIZE
-}
-
-
-def decode_sequence(sequence):
-    return " ".join(
-        index_to_word.get(int(index), "<OOV>")
-        for index in sequence
-        if index != 0
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=EPOCHS,
+        batch_size=BATCH_SIZE,
+        verbose=1
     )
 
+    val_loss, val_accuracy = model.evaluate(X_val, y_val, verbose=0)
+    test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=0)
 
-print("\nSample context:", decode_sequence(X_train[0]))
-print("Expected next word:", index_to_word.get(int(y_train[0]), "<OOV>"))
+    val_perplexity = np.exp(val_loss)
+    test_perplexity = np.exp(test_loss)
 
+    results.append({
+        "Model": layer_name,
+        "Validation Loss": val_loss,
+        "Validation Perplexity": val_perplexity,
+        "Validation Accuracy": val_accuracy,
+        "Test Loss": test_loss,
+        "Test Perplexity": test_perplexity,
+        "Test Accuracy": test_accuracy
+    })
 
-# LSTM language model
-model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(MAX_LENGTH,)),
+    print(f"\n{layer_name}")
+    print("Validation Cross-Entropy:", val_loss)
+    print("Validation Perplexity:", val_perplexity)
+    print("Test Cross-Entropy:", test_loss)
+    print("Test Perplexity:", test_perplexity)
+    print("Test Accuracy:", test_accuracy)
 
-    tf.keras.layers.Embedding(
-        input_dim=VOCAB_SIZE,
-        output_dim=EMBEDDING_DIM,
-        mask_zero=True
-    ),
+    if val_loss < best_loss:
+        best_loss = val_loss
+        best_model = tf.keras.models.clone_model(model)
+        best_model.set_weights(model.get_weights())
+        best_name = layer_name
 
-    tf.keras.layers.LSTM(
-        units=LSTM_UNITS,
-        activation=ACTIVATION,
-        recurrent_activation=RECURRENT_ACTIVATION
-    ),
+    plt.figure(figsize=(10, 4))
 
-    tf.keras.layers.Dense(
-        units=VOCAB_SIZE,
-        activation=OUTPUT_ACTIVATION
-    )
-])
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history["loss"], label="Train")
+    plt.plot(history.history["val_loss"], label="Validation")
+    plt.title(f"{layer_name} Loss")
+    plt.legend()
+    plt.grid()
 
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history["accuracy"], label="Train")
+    plt.plot(history.history["val_accuracy"], label="Validation")
+    plt.title(f"{layer_name} Accuracy")
+    plt.legend()
+    plt.grid()
 
-# Display model architecture
-model.summary()
-
-
-# Compile model
-model.compile(
-    optimizer=OPTIMIZER,
-    loss=LOSS,
-    metrics=["accuracy"]
-)
-
-
-# Train model
-history = model.fit(
-    X_train,
-    y_train,
-    validation_data=(X_val, y_val),
-    epochs=EPOCHS,
-    batch_size=BATCH_SIZE,
-    shuffle=True
-)
+    plt.tight_layout()
+    plt.show()
 
 
-# Evaluate model
-test_loss, test_accuracy = model.evaluate(
-    X_test,
-    y_test,
-    verbose=0
-)
+# Compare models
 
-perplexity = np.exp(test_loss)
+results_df = pd.DataFrame(results)
 
-print("\nTest Cross-Entropy Loss:", test_loss)
-print("Test Perplexity:", perplexity)
-print("Test Next-Word Accuracy:", test_accuracy)
+print("\nModel comparison:")
+print(results_df.to_string(index=False))
+
+print("\nBest model:", best_name)
+print("Best validation cross-entropy:", best_loss)
+print("Best validation perplexity:", np.exp(best_loss))
 
 
-# Plot training and validation loss
-plt.plot(history.history["loss"], label="Training Loss")
-plt.plot(history.history["val_loss"], label="Validation Loss")
-plt.xlabel("Epoch")
-plt.ylabel("Cross-Entropy Loss")
-plt.title("LSTM Language Model Loss")
-plt.legend()
-plt.grid()
-plt.show()
+# Predict next word
 
-
-# Plot training and validation accuracy
-plt.plot(history.history["accuracy"], label="Training Accuracy")
-plt.plot(history.history["val_accuracy"], label="Validation Accuracy")
-plt.xlabel("Epoch")
-plt.ylabel("Next-Word Accuracy")
-plt.title("LSTM Language Model Accuracy")
-plt.legend()
-plt.grid()
-plt.show()
-
-
-# Predict the next word
-def predict_next_word(text):
-    sequence = tokenizer.texts_to_sequences([text])[0]
-
-    if not sequence:
-        raise ValueError("Input text contains no recognized or OOV tokens.")
-
-    sequence = sequence[-MAX_LENGTH:]
-
-    padded = tf.keras.utils.pad_sequences(
-        [sequence],
-        maxlen=MAX_LENGTH,
-        padding="pre",
-        truncating="pre"
+def predict_next_word(prompt):
+    sequence = tokenizer.texts_to_sequences([prompt])
+    sequence = sequence[0][-SEQ_LEN:]
+    sequence = tf.keras.utils.pad_sequences(
+        [sequence], maxlen=SEQ_LEN, padding="pre"
     )
 
-    probabilities = model.predict(padded, verbose=0)[0].copy()
-    probabilities[0] = 0.0
-
-    predicted_id = int(np.argmax(probabilities))
-
-    return (
-        index_to_word.get(predicted_id, "<OOV>"),
-        float(probabilities[predicted_id])
-    )
+    probabilities = best_model.predict(sequence, verbose=0)[0]
+    return tokenizer.index_word.get(int(np.argmax(probabilities)), "<UNK>")
 
 
-prompt = "no evidence of"
+# Generate text
 
-word, probability = predict_next_word(prompt)
-
-print("\nPrompt:", prompt)
-print("Predicted next word:", word)
-print("Probability:", probability)
-
-
-# Generate text using autoregressive sampling
-def generate_text(seed_text, length=GENERATE_WORDS, temperature=TEMPERATURE):
+def generate_text(seed, length=GENERATION_LENGTH, temperature=TEMPERATURE):
     if temperature <= 0:
         raise ValueError("Temperature must be greater than zero.")
 
-    generated = seed_text.strip()
-
-    if not generated:
-        raise ValueError("Seed text cannot be empty.")
+    generated = seed
 
     for _ in range(length):
-        sequence = tokenizer.texts_to_sequences([generated])[0]
-
-        if not sequence:
-            break
-
-        sequence = sequence[-MAX_LENGTH:]
-
-        padded = tf.keras.utils.pad_sequences(
-            [sequence],
-            maxlen=MAX_LENGTH,
-            padding="pre",
-            truncating="pre"
+        sequence = tokenizer.texts_to_sequences([generated])[0][-SEQ_LEN:]
+        sequence = tf.keras.utils.pad_sequences(
+            [sequence], maxlen=SEQ_LEN, padding="pre"
         )
 
-        probabilities = model.predict(padded, verbose=0)[0]
-
+        probabilities = best_model.predict(sequence, verbose=0)[0]
         logits = np.log(np.maximum(probabilities, 1e-8)) / temperature
-        logits[0] = -1e9
-        logits -= np.max(logits)
-
-        probabilities = np.exp(logits)
+        logits[:2] = -np.inf
+        probabilities = np.exp(logits - np.max(logits))
         probabilities /= probabilities.sum()
 
-        predicted_id = int(
-            np.random.choice(VOCAB_SIZE, p=probabilities)
-        )
-
-        next_word = index_to_word.get(predicted_id, "<OOV>")
-
-        if next_word in ("<OOV>", "<PAD>"):
-            continue
-
+        next_id = np.random.choice(VOCAB_SIZE, p=probabilities)
+        next_word = tokenizer.index_word.get(next_id, "<UNK>")
         generated += " " + next_word
 
     return generated
 
 
-print("\nGenerated report text:")
-print(
-    generate_text(
-        "breast tissue demonstrates",
-        length=GENERATE_WORDS
-    )
+prompt = " ".join(test_reports[0].split()[:PROMPT_WORDS])
+
+print("\nPrompt:", prompt)
+print("Predicted next word:", predict_next_word(prompt))
+print("Generated report:", generate_text(prompt))
+
+
+# Compare cross-entropy and perplexity
+
+plt.figure(figsize=(8, 4))
+plt.bar(
+    results_df["Model"],
+    results_df["Test Loss"],
+    label="Cross-Entropy"
 )
+plt.title("Test Cross-Entropy Comparison")
+plt.ylabel("Cross-Entropy Loss")
+plt.legend()
+plt.grid(axis="y")
+plt.show()
+
+plt.figure(figsize=(8, 4))
+plt.bar(
+    results_df["Model"],
+    results_df["Test Perplexity"],
+    label="Perplexity"
+)
+plt.title("Test Perplexity Comparison")
+plt.ylabel("Perplexity")
+plt.legend()
+plt.grid(axis="y")
+plt.show()

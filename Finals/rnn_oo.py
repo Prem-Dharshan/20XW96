@@ -1,148 +1,135 @@
-from pathlib import Path
 
-from _runtime import setup
-
-args = setup(__file__)
-
-import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+import tensorflow as tf
+import nltk
 
-# 1. Load the Fashion-MNIST dataset
-(x_train, y_train), (x_test, y_test) = (
-    tf.keras.datasets.fashion_mnist.load_data()
+from sklearn.model_selection import train_test_split
+
+
+# Variables
+
+DATASET_PATH = "datasets/shakespeare.txt"
+TRAIN_LIMIT = 20000
+TEST_LIMIT = 10000
+TRAIN_SPLIT = 0.8
+VAL_SPLIT = 0.1
+
+EMBEDDING_DIM = 32
+RNN_UNITS = 128
+ACTIVATION = "tanh"
+OUTPUT_ACTIVATION = "softmax"
+OPTIMIZER = "adam"
+LOSS = "sparse_categorical_crossentropy"
+METRICS = ["accuracy"]
+
+EPOCHS = 30
+BATCH_SIZE = 128
+RANDOM_STATE = 42
+
+
+# Load dataset
+
+with open(DATASET_PATH, encoding="utf-8") as file:
+    text = file.read()
+
+print("Characters:", len(text))
+
+vocab = sorted(nltk.FreqDist(text))
+VOCAB_SIZE = len(vocab)
+char_to_index = {c: i for i, c in enumerate(vocab)}
+index_to_char = np.array(vocab)
+text_ids = np.array([char_to_index[c] for c in text])
+
+
+# Create one-to-one sequences
+
+X = text_ids[:-1]
+y = text_ids[1:]
+
+X = X[:TRAIN_LIMIT + TEST_LIMIT]
+y = y[:TRAIN_LIMIT + TEST_LIMIT]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=1 - TRAIN_SPLIT,
+    random_state=RANDOM_STATE
 )
 
-if args.quick:
-    x_train = x_train[:256]
-    y_train = y_train[:256]
-    x_test = x_test[:64]
-    y_test = y_test[:64]
+X_train, X_val, y_train, y_val = train_test_split(
+    X_train, y_train, test_size=VAL_SPLIT,
+    random_state=RANDOM_STATE
+)
+
+X_train = X_train.reshape(-1, 1)
+X_val = X_val.reshape(-1, 1)
+X_test = X_test.reshape(-1, 1)
+
+print("Train:", X_train.shape, y_train.shape)
+print("Validation:", X_val.shape, y_val.shape)
+print("Test:", X_test.shape, y_test.shape)
 
 
-class_names = [
-    "T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
-    "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"
-]
+# Build RNN
 
-print("Training images:", x_train.shape)
-print("Training labels:", y_train.shape)
-print("Testing images:", x_test.shape)
-print("Testing labels:", y_test.shape)
-
-# 2. Visualize a sample image
-index = 0
-
-plt.imshow(x_train[index], cmap="gray")
-plt.title(f"Actual class: {class_names[y_train[index]]}")
-plt.axis("off")
-plt.show()
-plt.figure()
-
-# 3. Normalize pixel values to the range [0, 1]
-x_train = x_train.astype("float32") / 255.0
-x_test = x_test.astype("float32") / 255.0
-
-# 4. Flatten each 28 x 28 image into 784 features
-x_train_flat = x_train.reshape(-1, 784)
-x_test_flat = x_test.reshape(-1, 784)
-
-# 5. Add a timestep dimension for the SimpleRNN layer
-x_train_rnn = x_train_flat[:, np.newaxis, :]
-x_test_rnn = x_test_flat[:, np.newaxis, :]
-
-print("RNN training input shape:", x_train_rnn.shape)
-print("RNN testing input shape:", x_test_rnn.shape)
-
-# 6. Build the one-to-one classification model
 model = tf.keras.Sequential([
-    tf.keras.Input(shape=(1, 784)),
-    tf.keras.layers.SimpleRNN(units=128,activation="tanh"),
-    tf.keras.layers.Dense(units=10,activation="softmax")
+    tf.keras.layers.Input(shape=(1,)),
+    tf.keras.layers.Embedding(VOCAB_SIZE, EMBEDDING_DIM),
+    tf.keras.layers.SimpleRNN(RNN_UNITS, activation=ACTIVATION),
+    tf.keras.layers.Dense(VOCAB_SIZE, activation=OUTPUT_ACTIVATION)
 ])
 
-# 7. Display model architecture and parameter counts
+model.compile(
+    optimizer=OPTIMIZER,
+    loss=LOSS,
+    metrics=METRICS
+)
+
 model.summary()
 
-# 8. Compile the model
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-    loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"]
-)
 
-# 9. Train the model
+# Train
+
 history = model.fit(
-    x_train_rnn,
-    y_train,
-    epochs=1 if args.quick else 5,
-    batch_size=64,
-    validation_split=0.1,
-    shuffle=True
+    X_train, y_train,
+    validation_data=(X_val, y_val),
+    epochs=EPOCHS,
+    batch_size=BATCH_SIZE
 )
 
-# 10. Evaluate the model on the test dataset
-test_loss, test_accuracy = model.evaluate(
-    x_test_rnn,
-    y_test,
-    verbose=2
-)
 
-print(f"Test loss: {test_loss:.4f}")
-print(f"Test accuracy: {test_accuracy:.4f}")
-print(f"Test accuracy: {test_accuracy * 100:.2f}%")
+# Evaluate
 
-# 11. Plot training and validation loss and accuracy
-plt.figure(figsize=(12, 4))
+loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
+print("Test Loss:", loss)
+print("Test Accuracy:", accuracy)
+
+
+# Plot results
+
+plt.figure(figsize=(10, 4))
 
 plt.subplot(1, 2, 1)
-plt.plot(history.history["loss"], label="Training loss")
-plt.plot(history.history["val_loss"], label="Validation loss")
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.title("Training and Validation Loss")
+plt.plot(history.history["loss"], label="Train")
+plt.plot(history.history["val_loss"], label="Validation")
+plt.title("Loss")
 plt.legend()
+plt.grid()
 
 plt.subplot(1, 2, 2)
-plt.plot(history.history["accuracy"], label="Training accuracy")
-plt.plot(history.history["val_accuracy"], label="Validation accuracy")
-plt.xlabel("Epoch")
-plt.ylabel("Accuracy")
-plt.title("Training and Validation Accuracy")
+plt.plot(history.history["accuracy"], label="Train")
+plt.plot(history.history["val_accuracy"], label="Validation")
+plt.title("Accuracy")
 plt.legend()
+plt.grid()
 
 plt.tight_layout()
 plt.show()
-plt.figure()
 
-# 12. Predict the class of one test image
-index = 0
 
-sample = x_test_rnn[index:index + 1]
-probabilities = model.predict(sample, verbose=0)
+# Predict next character
 
-predicted_label = np.argmax(probabilities[0])
-actual_label = y_test[index]
+prediction = model.predict(X_test[:1], verbose=0)[0].argmax()
 
-plt.imshow(x_test[index], cmap="gray")
-plt.title(
-    f"Actual: {class_names[actual_label]}\n"
-    f"Predicted: {class_names[predicted_label]}"
-)
-plt.axis("off")
-plt.show()
-plt.figure()
-
-print("Actual class:", class_names[actual_label])
-print("Predicted class:", class_names[predicted_label])
-print("Class probabilities:", np.round(probabilities[0], 3))
-
-# 13. Predict a batch of test images
-predictions = model.predict(x_test_rnn[:10], verbose=0)
-predicted_labels = np.argmax(predictions, axis=1)
-
-for i in range(10):
-    print(
-        f"Image {i}: Actual = {class_names[y_test[i]]}, "
-        f"Predicted = {class_names[predicted_labels[i]]}"
-    )
+print("Input:    ", index_to_char[X_test[0, 0]])
+print("Actual:   ", index_to_char[y_test[0]])
+print("Predicted:", index_to_char[prediction])
