@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import nltk
 
-from sklearn.model_selection import train_test_split
 from numpy.lib.stride_tricks import sliding_window_view
 
 
@@ -45,8 +44,16 @@ char_to_index = {c: i for i, c in enumerate(vocab)}
 index_to_char = np.array(vocab)
 text_ids = np.array([char_to_index[c] for c in text])
 
-split = int(len(text_ids) * TRAIN_SPLIT)
-train_text, test_text = text_ids[:split], text_ids[split:]
+# Split text before creating sequences to keep dataset boundaries disjoint.
+train_end = int(len(text_ids) * TRAIN_SPLIT)
+val_end = int(len(text_ids) * (TRAIN_SPLIT + VAL_SPLIT))
+train_text = text_ids[:train_end]
+val_text = text_ids[train_end:val_end]
+test_text = text_ids[val_end:]
+
+print("Train characters:", len(train_text))
+print("Validation characters:", len(val_text))
+print("Test characters:", len(test_text))
 
 
 # Create many-to-one sequences
@@ -56,14 +63,11 @@ def create_sequences(data):
     return sequences[:, :-1].copy(), sequences[:, -1].copy()
 
 X_train, y_train = create_sequences(train_text)
+X_val, y_val = create_sequences(val_text)
 X_test, y_test = create_sequences(test_text)
 
 X_train, y_train = X_train[:TRAIN_LIMIT], y_train[:TRAIN_LIMIT]
 X_test, y_test = X_test[:TEST_LIMIT], y_test[:TEST_LIMIT]
-
-X_train, X_val, y_train, y_val = train_test_split(
-    X_train, y_train, test_size=VAL_SPLIT, random_state=RANDOM_STATE
-)
 
 print("Train:", X_train.shape, y_train.shape)
 print("Validation:", X_val.shape, y_val.shape)
