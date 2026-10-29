@@ -1,0 +1,9 @@
+node_modules/
+*.log
+*.pid
+.openai/
+.DS_Store
+Thumbs.db
+# This project serves hand-authored static source from dist.
+!dist/
+!dist/**
