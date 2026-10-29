@@ -47,7 +47,7 @@ val_end = int(len(text_ids) * (TRAIN_SPLIT + VAL_SPLIT))
 train_text = text_ids[:train_end]
 val_text = text_ids[train_end:val_end]
 test_text = text_ids[val_end:]
-
+ 
 print("Train characters:", len(train_text))
 print("Validation characters:", len(val_text))
 print("Test characters:", len(test_text))
