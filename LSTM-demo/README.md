@@ -55,6 +55,10 @@ Alternatively, open dist/index.html directly for offline use.
 
 This demo is part of https://github.com/Prem-Dharshan/20XW96.
 
+Live lecture: https://prem-dharshan.github.io/20XW96/
+
+Documentation: https://prem-dharshan.github.io/20XW96/docs.html
+
 The repository-root workflow .github/workflows/deploy-lstm-pages.yml publishes LSTM-demo/dist. Pushing changes to that directory on main redeploys the lecture. It can also be run manually from Actions. No build or npm install is needed.
 
 To publish future edits:
